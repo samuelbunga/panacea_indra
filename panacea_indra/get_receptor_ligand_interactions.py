@@ -349,13 +349,9 @@ if __name__ == '__main__':
     # Read and extract cell surface proteins from CSPA DB
     wb = openpyxl.load_workbook(SURFACE_PROTEINS_WB)
     surface_protein_set = set(row[4].value for row in wb['Sheet 1']
-<<<<<<< HEAD
-                              if row[6].value)
-=======
                               if row[6].value == 'yes')
     logger.info('Got %d surface proteins from spreadsheet' %
                 len(surface_protein_set))
->>>>>>> indra/customDevelopments
     ligand_terms = ['cytokine activity', 'hormone activity',
                     'growth factor activity']
     receptor_terms = ['signaling receptor activity']
@@ -518,7 +514,7 @@ if __name__ == '__main__':
                                                       ligands_in_data,
                                                       indra_op_filtered)
 
-        df = get_small_mol_report(targets_by_drug, ligands_by_receptor,
+        df_mol_report = get_small_mol_report(targets_by_drug, ligands_by_receptor,
                                   os.path.join(output_dir,
                                                'drug_targets.tsv'))
 
