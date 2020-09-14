@@ -5,6 +5,8 @@ import pickle
 import logging
 import datetime
 import openpyxl
+import networkx
+import itertools
 import pandas as pd
 from indra.sources import tas
 from indra.util import batch_iter
@@ -32,12 +34,12 @@ DATA_SPREADSHEET = os.path.join(INPUT, 'Neuroimmune gene list .xlsx')
 DRUG_BANK_PKL = os.path.join(INPUT, 'drugbank_5.1.pkl')
 ION_CHANNELS = os.path.join(INPUT, 'ion_channels.txt')
 SURFACE_PROTEINS_WB = os.path.join(INPUT, 'Surface Proteins.xlsx')
-IMMUNE_CELLTYPE_LIST = ['TwoGroups_DEG1_DCs_AJ',
-                        'TwoGroups_DEG1_Dermal Macs_AJ',
-                        'TwoGroups_DEG1_M2a_AJ',
-                        'TwoGroups_DEG1_M2b_AJ',
-                        'TwoGroups_DEG1_Monocytes_AJ',
-                        'TwoGroups_DEG1_Resident Mac_AJ']
+IMMUNE_CELLTYPE_LIST = ['DCs',
+                        'Dermal Macs',
+                        'M2a',
+                        'M2b',
+                        'Monocytes',
+                        'Resident Mac']
 
 logger = logging.getLogger('receptor_ligand_interactions')
 
@@ -322,11 +324,38 @@ def filter_out_medscan(stmts):
     return new_stmts
 
 
+def get_cell_type_stats(stmts, ligands, receptors):
+    interactome = set()
+    for stmt in stmts:
+        stmt_ligands = {a.name for a in stmt.agent_list() if
+                        a.name in ligands}
+        stmt_receptors = {a.name for a in stmt.agent_list() if
+                          a.name in receptors}
+        for ligand, receptor in itertools.product(stmt_ligands,
+                                                  stmt_receptors):
+            interactome.add((ligand, receptor))
+    return len(interactome)
+
+
+def plot_interaction_potential(num_interactions_by_cell_type, fname):
+    G = networkx.DiGraph()
+    for cell_type, num_int in num_interactions_by_cell_type.items():
+        G.add_edge(cell_type, 'Neurons', label=num_int)
+    ag = networkx.nx_agraph.to_agraph(G)
+    ag.draw(fname, prog='dot')
+
+
 if __name__ == '__main__':
     # Read and extract cell surface proteins from CSPA DB
     wb = openpyxl.load_workbook(SURFACE_PROTEINS_WB)
     surface_protein_set = set(row[4].value for row in wb['Sheet 1']
+<<<<<<< HEAD
                               if row[6].value)
+=======
+                              if row[6].value == 'yes')
+    logger.info('Got %d surface proteins from spreadsheet' %
+                len(surface_protein_set))
+>>>>>>> indra/customDevelopments
     ligand_terms = ['cytokine activity', 'hormone activity',
                     'growth factor activity']
     receptor_terms = ['signaling receptor activity']
@@ -353,6 +382,9 @@ if __name__ == '__main__':
         for line in fh:
             ion_channels.add(line.strip())
     receptor_genes_go |= ion_channels
+
+    # Load the INDRA DB DF
+    df = load_indra_df(INDRA_DB_PKL)
 
     # Fetch omnipath database biomolecular interactions and
     # process them into INDRA statements
@@ -387,17 +419,19 @@ if __name__ == '__main__':
                                          'HMS-LINCS'])
         targets_by_drug[(stmt.subj.name, drug_grounding)].add(stmt.obj.name)
 
+    stmts_by_cell_type = {}
+    num_interactions_by_cell_type = {}
+
     # Looping over each file (cell type) and perform anylysis
     # for each cell type
     for cell_type in IMMUNE_CELLTYPE_LIST:
         output_dir = os.path.join(OUTPUT, cell_type)
         if not os.path.exists(output_dir):
             os.mkdir(output_dir)
-        # get the file name and use it as its directory name
-        out_dir = cell_type.split(".")[0]
 
         # read the input (immune cell type) ligand file
-        LIGANDS_INFILE = os.path.join(INPUT, '%s.csv' % cell_type)
+        cell_type_full = 'TwoGroups_DEG1_%s_AJ' % cell_type
+        LIGANDS_INFILE = os.path.join(INPUT, '%s.csv' % cell_type_full)
 
         # Set current working directory
         # Collect lists of receptors and ligands based on GO annotations and
@@ -417,7 +451,6 @@ if __name__ == '__main__':
         logger.info(f'Loaded {len(receptors_in_data)} receptor genes from data')
 
         # Now get INDRA DB Statements for the receptor-ligand pairs
-        df = load_indra_df(INDRA_DB_PKL)
         hashes_by_gene_pair = get_hashes_by_gene_pair(df, ligands_in_data,
                                                       receptors_in_data)
 
@@ -457,6 +490,12 @@ if __name__ == '__main__':
                 'indra_ligand_receptor_statements.pkl'), 'wb') as fh:
             pickle.dump(indra_op_filtered, fh)
 
+        stmts_by_cell_type[cell_type] = indra_op_filtered
+        num_interactions_by_cell_type[cell_type] = \
+            get_cell_type_stats(indra_op_filtered,
+                                ligands_in_data,
+                                receptors_in_data)
+
         # Assemble the statements into HTML formatted report and save into a file
         indra_op_html_report = \
             html_assembler(
@@ -482,3 +521,6 @@ if __name__ == '__main__':
         df = get_small_mol_report(targets_by_drug, ligands_by_receptor,
                                   os.path.join(output_dir,
                                                'drug_targets.tsv'))
+
+plot_interaction_potential(num_interactions_by_cell_type,
+                           'interaction_potential.pdf')
