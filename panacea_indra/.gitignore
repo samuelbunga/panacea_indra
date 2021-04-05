@@ -1,0 +1,8 @@
+__pycache__
+*.nextflow.log*
+*ipynb*
+.DS_Store
+*.nextflow/
+input/
+output/
+work/
